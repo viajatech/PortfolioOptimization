@@ -1,0 +1,161 @@
+#Por David Ruiz
+#Puedes usar mi script siempre y cuando me des créditos en mis redes sociales @viajatech
+
+
+import random
+import json
+import yfinance as yf
+from deap import base, creator, tools, algorithms
+import numpy as np
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.spinner import Spinner
+import matplotlib.pyplot as plt
+
+try:
+    from kivy_garden.matplotlib.backend_kivyagg import FigureCanvasKivyAgg
+except ImportError:
+    print("No se pudo importar FigureCanvasKivyAgg. Usando método alternativo.")
+    FigureCanvasKivyAgg = None
+
+# Configuración del algoritmo genético
+creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+creator.create("Individual", np.ndarray, fitness=creator.FitnessMax)
+
+toolbox = base.Toolbox()
+
+def generate_individual(num_assets):
+    weights = np.random.random(num_assets)
+    return weights / np.sum(weights)
+
+class PortfolioOptimizerApp(App):
+    def build(self):
+        self.layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        self.tickers_input = TextInput(text='AAPL,GOOGL,MSFT,AMZN,META', multiline=False)
+        self.layout.add_widget(Label(text='Tickers (separados por coma):'))
+        self.layout.add_widget(self.tickers_input)
+        
+        self.population_size_input = TextInput(text='50', multiline=False)
+        self.layout.add_widget(Label(text='Tamaño de la población:'))
+        self.layout.add_widget(self.population_size_input)
+        
+        self.num_generations_input = TextInput(text='50', multiline=False)
+        self.layout.add_widget(Label(text='Número de generaciones:'))
+        self.layout.add_widget(self.num_generations_input)
+        
+        self.mutation_rate_input = TextInput(text='0.2', multiline=False)
+        self.layout.add_widget(Label(text='Tasa de mutación:'))
+        self.layout.add_widget(self.mutation_rate_input)
+        
+        self.crossover_rate_input = TextInput(text='0.7', multiline=False)
+        self.layout.add_widget(Label(text='Tasa de cruce:'))
+        self.layout.add_widget(self.crossover_rate_input)
+        
+        self.optimize_button = Button(text='Optimizar Cartera')
+        self.optimize_button.bind(on_press=self.optimize_portfolio)
+        self.layout.add_widget(self.optimize_button)
+        
+        self.result_label = Label(text='Resultado aparecerá aquí')
+        self.layout.add_widget(self.result_label)
+        
+        if FigureCanvasKivyAgg:
+            self.plot_widget = FigureCanvasKivyAgg(plt.gcf())
+            self.layout.add_widget(self.plot_widget)
+        else:
+            self.plot_widget = Label(text='Gráfico no disponible')
+            self.layout.add_widget(self.plot_widget)
+        
+        return self.layout
+    
+    def get_stock_data(self, tickers):
+        data = yf.download(tickers, period="1y")['Adj Close']
+        if data.empty:
+            raise ValueError("No se pudieron obtener datos para los tickers proporcionados.")
+        returns = data.pct_change().dropna()
+        if returns.empty:
+            raise ValueError("No hay suficientes datos para calcular los retornos.")
+        return returns.mean() * 252, returns.cov() * 252  # Anualizado
+    
+    def optimize_portfolio(self, instance):
+        try:
+            tickers = self.tickers_input.text.split(',')
+            num_assets = len(tickers)
+            
+            returns, cov_matrix = self.get_stock_data(tickers)
+            
+            population_size = int(self.population_size_input.text)
+            num_generations = int(self.num_generations_input.text)
+            mutation_rate = float(self.mutation_rate_input.text)
+            crossover_rate = float(self.crossover_rate_input.text)
+            
+            toolbox.register("attr_float", random.random)
+            toolbox.register("individual", tools.initIterate, creator.Individual, lambda: generate_individual(num_assets))
+            toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+            toolbox.register("evaluate", self.evaluate_portfolio, returns=returns, cov_matrix=cov_matrix)
+            toolbox.register("mate", tools.cxBlend, alpha=0.5)
+            toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.2, indpb=0.2)
+            toolbox.register("select", tools.selTournament, tournsize=3)
+            
+            population = toolbox.population(n=population_size)
+            algorithms.eaSimple(population, toolbox, cxpb=crossover_rate, mutpb=mutation_rate, ngen=num_generations, verbose=False)
+            
+            best_individual = tools.selBest(population, k=1)[0]
+            best_portfolio = [round(w, 4) for w in best_individual]
+            
+            expected_return, portfolio_risk = self.calculate_portfolio_performance(best_individual, returns, cov_matrix)
+            
+            result_text = f"Cartera óptima: {dict(zip(tickers, best_portfolio))}\n"
+            result_text += f"Retorno esperado: {expected_return:.4f}\n"
+            result_text += f"Riesgo de la cartera: {portfolio_risk:.4f}"
+            self.result_label.text = result_text
+            
+            self.plot_efficient_frontier(population, returns, cov_matrix)
+        except Exception as e:
+            self.result_label.text = f"Error: {str(e)}"
+    
+    def evaluate_portfolio(self, individual, returns, cov_matrix):
+        portfolio_return, portfolio_risk = self.calculate_portfolio_performance(individual, returns, cov_matrix)
+        
+        # Calculate Sharpe Ratio (assuming risk-free rate of 0 for simplicity)
+        sharpe_ratio = portfolio_return / portfolio_risk if portfolio_risk > 0 else 0
+        
+        # Return as a tuple with a single value
+        return (sharpe_ratio,)
+    
+    def calculate_portfolio_performance(self, weights, returns, cov_matrix):
+        weights = np.array(weights)
+        returns = np.array(returns)
+        
+        portfolio_return = np.sum(returns * weights) * 252
+        portfolio_risk = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
+        
+        return portfolio_return, portfolio_risk
+    
+    def plot_efficient_frontier(self, population, returns, cov_matrix):
+        returns_array = []
+        risks_array = []
+        for individual in population:
+            r, risk = self.calculate_portfolio_performance(individual, returns, cov_matrix)
+            returns_array.append(r)
+            risks_array.append(risk)
+        
+        plt.figure(figsize=(10, 6))
+        plt.scatter(risks_array, returns_array, c=returns_array, cmap='viridis')
+        plt.colorbar(label='Retorno Esperado')
+        plt.xlabel('Riesgo')
+        plt.ylabel('Retorno Esperado')
+        plt.title('Frontera Eficiente')
+        
+        if FigureCanvasKivyAgg:
+            self.plot_widget.draw()
+        else:
+            plt.savefig('efficient_frontier.png')
+            plt.close()
+            print("Gráfico guardado como 'efficient_frontier.png'")
+
+if __name__ == '__main__':
+    PortfolioOptimizerApp().run()
