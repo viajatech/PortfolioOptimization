@@ -4,6 +4,8 @@ David Ruiz
 ------
 Recuerda darme créditos si usas mi script. lo puedes hacer también en mis redes sociales; @viajatech
 ------
+Script BETA (Aún no esta terminado)
+------
 Gráfico de la Frontera Eficiente
 El gráfico muestra la Frontera Eficiente, que es una representación visual de las carteras de inversión que ofrecen el mayor retorno esperado para un nivel dado de riesgo. En el eje X se encuentra el riesgo (desviación estándar de los retornos) y en el eje Y se encuentra el retorno esperado. Los puntos en el gráfico representan diferentes carteras, y la barra de colores indica el retorno esperado de cada una.
 ------
