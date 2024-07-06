@@ -13,3 +13,4 @@ Se calcula el ratio de Sharpe para evaluar el portafolio.
 Se descargan los datos de precios ajustados de las acciones usando yfinance.
 Se calculan los retornos diarios y la matriz de covarianzas anualizados.
 Se define la interfaz de usuario con campos de entrada para los parámetros del algoritmo genético y un botón para iniciar la optimización.
+------
