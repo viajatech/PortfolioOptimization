@@ -1,5 +1,7 @@
 #Por David Ruiz
 #Puedes usar mi script siempre y cuando me des créditos en mis redes sociales @viajatech
+#pip install kivy deap numpy matplotlib yfinance kivy_garden.matplotlib
+
 
 
 import random
